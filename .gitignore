@@ -1,0 +1,17 @@
+# /.vs
+# /ChatServer/x64
+# /ChatServer/ChatServer
+# /ChatServer/.vs
+# /x64/debug
+# /.gitignore
+
+/ClientSide/.vs
+/ClientSide/ChatClient/.vs
+/ClientSide/ChatClient/ChatClient/x64
+/ClientSide/ChatClient/x64/Debug
+
+/ServerSide/.vs
+/ServerSide/ChatServer/ChatServer
+/ServerSide/ChatServer/.vs
+/ServerSide/ChatServer/x64
+/ServerSide/x64/Debug
