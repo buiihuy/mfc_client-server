@@ -13,7 +13,7 @@ class CChatClientDlg : public CDialogEx
 // Construction
 public:
 	CClientSocket m_Client;
-	void AddMsg(char* buff);
+	void AddMsg(char* buff, CClientSocket* m_client);
 	CChatClientDlg(CWnd* pParent = nullptr);	// standard constructor
 
 // Dialog Data

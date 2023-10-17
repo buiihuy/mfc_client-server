@@ -48,7 +48,7 @@ void CClientSocket::OnReceive(int nErrorCode)
 
 	int ibuf = Receive(buff, sizeof(buff));
 	buff[ibuf] = '\0';
-	if (buff[0] != ':') {
+	if (buff[0] != ':' && buff[0] != '/') {
 		strcpy_s((this->udata).cUserName, sizeof((this->udata).cUserName), buff);
 		(this->udata).cUserName[strlen((this->udata).cUserName)] = '\0';
 	}

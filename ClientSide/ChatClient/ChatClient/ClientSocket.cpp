@@ -21,7 +21,7 @@ void CClientSocket::OnReceive(int nErrorCode)
 
 	/*userinfo* udata;
 	udata = (userinfo*)buff;*/
-	((CChatClientDlg*)pDlg)->AddMsg(buff);
+	((CChatClientDlg*)pDlg)->AddMsg(buff, this);
 
 	CSocket::OnReceive(nErrorCode);
 }

@@ -51,7 +51,7 @@ protected:
 public:
 	
 	CListBox m_Display;
-	CString m_Msg;
+	//CString m_Msg;
 	afx_msg void OnLbnSelchangeList1();
 public:
 	void NICK(char* str, CClientSocket* m_sClient);

@@ -63,7 +63,7 @@ void CChatServerDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_LIST1, m_Display);
-	DDX_Text(pDX, IDC_EDIT1, m_Msg);
+	//DDX_Text(pDX, IDC_EDIT1, m_Msg);
 }
 
 BEGIN_MESSAGE_MAP(CChatServerDlg, CDialogEx)
@@ -173,6 +173,7 @@ void CChatServerDlg::OnBnClickedButtonSend()
 
 void CChatServerDlg::AddMsg(char* str, CClientSocket* m_sClient)
 {
+	char msg[100] = "";
 	if (str[0] == ':') {
 		char tmp[20];
 		int i = 0;
@@ -190,11 +191,27 @@ void CChatServerDlg::AddMsg(char* str, CClientSocket* m_sClient)
 		else if (!strcmp(tmp, ":PRIVMSG")) PRIVMSG(str, m_sClient);
 		else if (!strcmp(tmp, ":WHO")) WHO(str, m_sClient);
 		else {
-			char* msg = ">>>ERROR_UNKNOWNCOMMAND";
+			snprintf(msg, sizeof(msg), ">>>ERROR_UNKNOWNCOMMAND");
 			m_sClient->Send(msg, strlen(msg));
 		}
 	}
+	else if (!strcmp(str, "/STOP")) {
+		//m_sClient->Close();
+		for (int i = 0; i < m_sServer.m_sClients.size(); i++) {
+			if (m_sServer.m_sClients.at(i) == m_sClient) {
+				m_sServer.m_sClients.erase(m_sServer.m_sClients.begin() + i);
+			}
+		}
+	}
 	else {
+		for (int i = 0; i < m_sServer.m_sClients.size(); i++) {
+			if (!strcmp(m_sServer.m_sClients.at(i)->udata.cUserName, str) && m_sServer.m_sClients.at(i) != m_sClient) {
+				snprintf(msg, sizeof(msg), "The username is unavailable");
+				m_sClient->Send(msg, strlen(msg));
+				m_sClient->Close();
+				return;
+			}
+		}
 		CString str_display;
 		str_display.Format(_T("%hs join server"), str);
 		m_Display.AddString(str_display);
@@ -258,31 +275,67 @@ void CChatServerDlg::OnLbnSelchangeList1()
 
 void CChatServerDlg::NICK(char* str, CClientSocket* m_sClient) {
 	int i = 6;
+	char msg[30] = "";
 	char nickname[20];
+
+	if (str[5] == '\0') {
+		snprintf(msg, sizeof(msg), "Syntax Error!");
+		m_sClient->Send(msg, strlen(msg));
+		return;
+	}
 
 	while (str[i] != '\0') {
 		nickname[i-6] = str[i];
 		i++;
 	}
 	nickname[i - 6] = '\0';
+	if (strcmp(nickname, "\0")) {
+		for (int i = 0; i < m_sServer.m_sClients.size(); i++) {
 
-	for (int i = 0; i < m_sServer.m_sClients.size(); i++) {
+			if (m_sServer.m_sClients[i] != m_sClient && !strcmp((m_sServer.m_sClients[i]->udata).cNickName, nickname)) {
 
-		if (m_sServer.m_sClients[i] != m_sClient && !strcmp((m_sServer.m_sClients[i]->udata).cNickName, nickname)) {
+				snprintf(msg, sizeof(msg), "This nickname is available!");
+				m_sClient->Send(msg, strlen(msg));
 
-			char* msg = "This nickname is existed!!!";
-			m_sClient->Send(msg, strlen(msg));
-
-			return;
+				return;
+			}
 		}
+		strcpy_s((m_sClient->udata).cNickName, sizeof((m_sClient->udata).cNickName), nickname);
+		snprintf(msg, sizeof(msg), "You set nickname successfully!");
+		m_sClient->Send(msg, strlen(msg));
 	}
-	strcpy_s((m_sClient->udata).cNickName, sizeof((m_sClient->udata).cNickName), nickname);
+	else {
+		snprintf(msg, sizeof(msg), "Server : Empty Nickname");
+		m_sClient->Send(msg, strlen(msg));
+	}
 }
 
 
 void CChatServerDlg::QUIT(char* str, CClientSocket* m_sClient) {
-	char msg[] = "/QUIT";
-	CChatServerDlg::PART(m_sClient);
+
+	char msg[50] = "";
+
+	for (int i = 0; i < channels.size(); i++) {
+
+		for (int j = 0; j < channels[i]->channelClient.size(); j++) {
+
+			if (channels[i]->channelClient.at(j) == m_sClient) {
+
+				channels[i]->channelClient.erase(channels[i]->channelClient.begin() + j);
+				m_sClient->udata.in_channel = false;
+
+				snprintf(msg, sizeof(msg), "You leave channel %s successfully", channels[i]->channelName);
+				m_sClient->Send(msg, strlen(msg));
+
+				snprintf(msg, sizeof(msg), "%s leave channel", m_sClient->udata.cUserName);
+				for (int k = 0; k < channels[i]->channelClient.size(); k++) {
+					channels[i]->channelClient.at(k)->Send(msg, strlen(msg));
+				}
+				break;
+			}
+		}
+	}
+	snprintf(msg, sizeof(msg), "/QUIT");
 	m_sClient->Send(msg, strlen(msg));
 }
 
@@ -292,49 +345,58 @@ void CChatServerDlg::JOIN(char* str, CClientSocket* m_sClient) {
 	char msg[100] = "";
 	int i = 6;
 
+	if (str[5] == '\0') {
+		snprintf(msg, sizeof(msg), "Syntax Error!");
+		m_sClient->Send(msg, strlen(msg));
+		return;
+	}
+
 	while (str[i] != '\0') {
 		cname[i-6] = str[i];
 		i++;
 	}
 	cname[i - 6] = '\0';
 
-	if (m_sClient->udata.in_channel == false) {
+	if (strcmp(cname, "\0")) {
+		if (m_sClient->udata.in_channel == false) {
 
-		for (int i = 0; i < channels.size(); i++) {
+			for (int i = 0; i < channels.size(); i++) {
 
-			if (!strcmp(channels[i]->channelName, cname)) {
+				if (!strcmp(channels[i]->channelName, cname)) {
 
-				//msg = "you join channel successfully";
-				snprintf(msg, sizeof(msg), "you join channel %s successfully", cname);
-				m_sClient->Send(msg, strlen(msg));
+					snprintf(msg, sizeof(msg), "You join channel %s successfully!", cname);
+					m_sClient->Send(msg, strlen(msg));
 
-				//msg = m_sClient->udata.cUserName;
-				//strcpy_s(msg, sizeof(msg), " join channel!!");
-				snprintf(msg, sizeof(msg), "%s join channel %s", m_sClient->udata.cUserName, cname);
+					snprintf(msg, sizeof(msg), "%s join channel %s", m_sClient->udata.cUserName, cname);
 
-				for (int k = 0; k < channels[i]->channelClient.size(); k++) {
-					if (strcmp(channels[i]->channelClient.at(k)->udata.cUserName, m_sClient->udata.cUserName)) {
-						channels[i]->channelClient.at(k)->Send(msg, strlen(msg));
+					for (int k = 0; k < channels[i]->channelClient.size(); k++) {
+						if (strcmp(channels[i]->channelClient.at(k)->udata.cUserName, m_sClient->udata.cUserName)) {
+							channels[i]->channelClient.at(k)->Send(msg, strlen(msg));
+						}
 					}
+
+					channels[i]->channelClient.push_back(m_sClient);
+					m_sClient->udata.in_channel = true;
+					return;
 				}
-
-				channels[i]->channelClient.push_back(m_sClient);
-				m_sClient->udata.in_channel = true;
-				return;
 			}
-		}
 
-		channel* newchannel = new channel;
-		strcpy_s(newchannel->channelName, sizeof(newchannel->channelName), cname);
-		newchannel->channelClient.push_back(m_sClient);
-		channels.push_back(newchannel);
-		m_sClient->udata.in_channel = true;
-		//msg = "you join channel successfully";
-		snprintf(msg, sizeof(msg), "you join channel %s successfully", cname);
-		m_sClient->Send(msg, strlen(msg));
+			channel* newchannel = new channel;
+			strcpy_s(newchannel->channelName, sizeof(newchannel->channelName), cname);
+			newchannel->channelClient.push_back(m_sClient);
+			channels.push_back(newchannel);
+			m_sClient->udata.in_channel = true;
+			//msg = "you join channel successfully";
+			snprintf(msg, sizeof(msg), "You join channel %s successfully!", cname);
+			m_sClient->Send(msg, strlen(msg));
+		}
+		else {
+			snprintf(msg, sizeof(msg), "You join channel failed!");
+			m_sClient->Send(msg, strlen(msg));
+		}
 	}
 	else {
-		snprintf(msg, sizeof(msg), "you join channel failed");
+		snprintf(msg, sizeof(msg), "Empty channel name!");
 		m_sClient->Send(msg, strlen(msg));
 	}
 }
@@ -352,10 +414,10 @@ void CChatServerDlg::PART(CClientSocket* m_sClient) {
 				channels[i]->channelClient.erase(channels[i]->channelClient.begin() + j);
 				m_sClient->udata.in_channel = false;
 
-				snprintf(msg, sizeof(msg), "you leave your channel successfully");
+				snprintf(msg, sizeof(msg), "You leave channel %s successfully!", channels[i]->channelName);
 				m_sClient->Send(msg, strlen(msg));
 
-				snprintf(msg, sizeof(msg), "%s successfully", m_sClient->udata.cUserName);
+				snprintf(msg, sizeof(msg), "%s leave channel!", m_sClient->udata.cUserName);
 				for (int k = 0; k < channels[i]->channelClient.size(); k++) {
 					channels[i]->channelClient.at(k)->Send(msg, strlen(msg));
 				}
@@ -363,7 +425,7 @@ void CChatServerDlg::PART(CClientSocket* m_sClient) {
 			}
 		}
 	}
-	snprintf(msg, sizeof(msg), "you are not in any channel!!");
+	snprintf(msg, sizeof(msg), "You are not in any channel!");
 	m_sClient->Send(msg, strlen(msg));
 }
 
@@ -381,83 +443,133 @@ void CChatServerDlg::LIST(char* str, CClientSocket* m_sClient) {
  
 
 void CChatServerDlg::PRIVMSG(char* str, CClientSocket* m_sClient) {
+
+	char msg[1000] = "";
+
+	if (str[8] == '\0') {
+		snprintf(msg, sizeof(msg), "Syntax Error!");
+		m_sClient->Send(msg, strlen(msg));
+		return;
+	}
+
 	// inbox to an user
 	if (str[9] == '@') {
-		char receiver[20];
-		char text[1000];
-		char msg[1000] = "";
+		char receiver[20]; // store the name of the received client
+		char text[1000]; // store the message
 		int i = 10;
 		int k = 0;
 
-		while (str[i] != ' ') {
-			receiver[i-10] = str[i];
+		while (str[i] != ' ' && str[i] != '\0') {
+			receiver[i - 10] = str[i];
 			i++;
 		}
-		receiver[i-10] = '\0';
+		receiver[i - 10] = '\0';
 
-		i++;
-		while (str[i] != '\0') {
-			text[k] = str[i];
+		if (str[i] != '\0') {
 			i++;
-			k++;
-		}
-		text[k] = '\0';
-
-		for (int j = 0; j < m_sServer.m_sClients.size(); j++) {
-
-			if (!strcmp((m_sServer.m_sClients.at(j)->udata).cUserName, receiver)) {
-
-				snprintf(msg, sizeof(msg), "%s : %s", (m_sClient->udata).cUserName, text);
-				m_sServer.m_sClients.at(j)->Send(msg, strlen(msg));
-
-				return;
+			while (str[i] != '\0') {
+				text[k] = str[i];
+				i++;
+				k++;
 			}
+			text[k] = '\0';
+		}
+		else text[k] = '\0';
+
+		if (strcmp(text, "\0") && strcmp(receiver, "\0")) {
+			for (int j = 0; j < m_sServer.m_sClients.size(); j++) {
+
+				if (!strcmp((m_sServer.m_sClients.at(j)->udata).cUserName, receiver)) {
+
+					snprintf(msg, sizeof(msg), "%s : %s", (m_sClient->udata).cUserName, text);
+					m_sServer.m_sClients.at(j)->Send(msg, strlen(msg));
+
+					return;
+				}
+			}
+			snprintf(msg, sizeof(msg), "Server : User not found");
+			m_sClient->Send(msg, strlen(msg));
+		}
+		else {
+			snprintf(msg, sizeof(msg), "Server : Empty message or received user name!");
+			m_sClient->Send(msg, strlen(msg));
 		}
 	}
 
 	// inbox to channel
-	if (str[9] == '#') {
-		char msg[1000] = "";
-		char channelReceiver[20];
-		char text[1000];
+	else if (str[9] == '#') {
+
+		if (!m_sClient->udata.in_channel) {
+			snprintf(msg, sizeof(msg), "You are not in any channel!");
+			m_sClient->Send(msg, strlen(msg));
+			return;
+		}
+
+		char channelReceiver[20]; // store the channel name
+		char text[1000]; // store the message
 		int i = 10;
 		int m = 0;
 
-		while (str[i] != ' ') {
+		while (str[i] != ' ' && str[i] != '\0') {
 			channelReceiver[i-10] = str[i];
 			i++;
 		}
 		channelReceiver[i - 10] = '\0';
 
-		i++;
-		while (str[i] != '\0') {
-			text[m] = str[i];
+		if (str[i] != '\0') {
 			i++;
-			m++;
-		}
-		text[m] = '\0';
-
-		for (int j = 0; j < channels.size(); j++) {
-			if (!strcmp(channels[j]->channelName, channelReceiver)) {
-
-				snprintf(msg, sizeof(msg), "%s : %s", (m_sClient->udata).cUserName, text);
-
-				for (int k = 0; k < channels[j]->channelClient.size(); k++) {
-
-					if (strcmp((channels[j]->channelClient.at(k))->udata.cUserName, (m_sClient->udata).cUserName)) {
-						(channels[i]->channelClient.at(k))->Send(msg, strlen(msg));
-					}
-				}
-				break;
+			while (str[i] != '\0') {
+				text[m] = str[i];
+				i++;
+				m++;
 			}
+			text[m] = '\0';
 		}
+		else text[m] = '\0';
+
+		if (strcmp(text, "\0") && strcmp(channelReceiver, "\0")) {
+			for (int j = 0; j < channels.size(); j++) {
+				if (!strcmp(channels[j]->channelName, channelReceiver)) {
+
+					snprintf(msg, sizeof(msg), "%s > %s : %s", (m_sClient->udata).cUserName, channels[j]->channelName, text);
+
+					for (int k = 0; k < channels[j]->channelClient.size(); k++) {
+
+						if (strcmp((channels[j]->channelClient.at(k))->udata.cUserName, (m_sClient->udata).cUserName)) {
+							(channels[j]->channelClient.at(k))->Send(msg, strlen(msg));
+						}
+					}
+					return;
+				}
+			}
+			snprintf(msg, sizeof(msg), "Server : Channel not found"); 
+			m_sClient->Send(msg, strlen(msg));
+		}
+		else {
+			snprintf(msg, sizeof(msg), "Server : Empty message or channel name!");
+			m_sClient->Send(msg, strlen(msg));
+		}
+	}
+
+	// other
+	else {
+		snprintf(msg, sizeof(msg), "Syntax Error!");
+		m_sClient->Send(msg, strlen(msg));
 	}
 }
 
 
 void CChatServerDlg::WHO(char* str, CClientSocket* m_sClient) {
+	char msg[100] = "";
+
+	if (str[4] == '\0') {
+		snprintf(msg, sizeof(msg), "Syntax Error!");
+		m_sClient->Send(msg, strlen(msg));
+		return;
+	}
+
 	if (str[5] == '@') {
-		char msg[100] = "";
+		//char msg[100] = "";
 		char uname[20];
 		int i = 6;
 
@@ -467,21 +579,28 @@ void CChatServerDlg::WHO(char* str, CClientSocket* m_sClient) {
 		}
 		uname[i - 6] = '\0';
 
-		for (int j = 0; j < m_sServer.m_sClients.size(); j++) {
-			if (!strcmp((m_sServer.m_sClients.at(j)->udata).cUserName, uname)) {
+		if (strcmp(uname, "\0")) {
+			for (int j = 0; j < m_sServer.m_sClients.size(); j++) {
+				if (!strcmp((m_sServer.m_sClients.at(j)->udata).cUserName, uname)) {
 
-				snprintf(msg, sizeof(msg), "User name : %s", (m_sServer.m_sClients.at(j)->udata).cUserName);
-				m_sClient->Send(msg, strlen(msg));
+					snprintf(msg, sizeof(msg), "User name : %s", (m_sServer.m_sClients.at(j)->udata).cUserName);
+					m_sClient->Send(msg, strlen(msg));
 
-				snprintf(msg, sizeof(msg), "Nick name : %s", (m_sServer.m_sClients.at(j)->udata).cNickName);
-				m_sClient->Send(msg, strlen(msg));
+					snprintf(msg, sizeof(msg), "   Nick name : %s", (m_sServer.m_sClients.at(j)->udata).cNickName);
+					m_sClient->Send(msg, strlen(msg));
 
-				break;
+					break;
+				}
 			}
 		}
+		else {
+			snprintf(msg, sizeof(msg), "Server : Empty user name");
+			m_sClient->Send(msg, strlen(msg));
+		}
 	}
-	if (str[5] == '#') {
-		char msg[100] = "";
+
+	else if (str[5] == '#') {
+		//char msg[100] = "";
 		char cname[20];
 		int i = 6;
 
@@ -491,23 +610,34 @@ void CChatServerDlg::WHO(char* str, CClientSocket* m_sClient) {
 		}
 		cname[i - 6] = '\0';
 
-		for (int j = 0; j < channels.size(); j++) {
-			if (strcmp(channels[j]->channelName, cname)) {
-				
-				snprintf(msg, sizeof(msg), "Channel : %s", channels[j]->channelName);
-				m_sClient->Send(msg, strlen(msg));
+		if (strcmp(cname, "\0")) {
+			for (int j = 0; j < channels.size(); j++) {
+				if (!strcmp(channels[j]->channelName, cname)) {
 
-				for (int k = 0; k < channels[i]->channelClient.size(); k++) {
-					CClientSocket* pSocket = channels[i]->channelClient.at(k);
-
-					snprintf(msg, sizeof(msg), ">>> User name : %s", pSocket->udata.cUserName);
+					snprintf(msg, sizeof(msg), "Channel : %s", channels[j]->channelName);
 					m_sClient->Send(msg, strlen(msg));
 
-					snprintf(msg, sizeof(msg), "Nick name : %s", pSocket->udata.cUserName);
-					m_sClient->Send(msg, strlen(msg));
+					for (int k = 0; k < channels[j]->channelClient.size(); k++) {
+						CClientSocket* pSocket = channels[j]->channelClient.at(k);
+
+						snprintf(msg, sizeof(msg), "   >>> User name : %s", pSocket->udata.cUserName);
+						m_sClient->Send(msg, strlen(msg));
+
+						snprintf(msg, sizeof(msg), "   Nick name : %s", pSocket->udata.cNickName);
+						m_sClient->Send(msg, strlen(msg));
+					}
+					break;
 				}
-				break;
 			}
 		}
+		else {
+			snprintf(msg, sizeof(msg), "Server : Empty channel name");
+			m_sClient->Send(msg, strlen(msg));
+		}
+	}
+
+	else {
+		snprintf(msg, sizeof(msg), "Syntax Error!");
+		m_sClient->Send(msg, strlen(msg));
 	}
 }

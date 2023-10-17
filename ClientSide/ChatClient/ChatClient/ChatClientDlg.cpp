@@ -171,6 +171,21 @@ void CChatClientDlg::OnBnClickedButtonConnect()
 	// TODO: Add your control notification handler code here
 	UpdateData(TRUE);
 
+	if (m_sUserName.GetLength() == 0) {
+		MessageBox(_T("The username is empty"));
+		return;
+	}
+
+	if (m_sUserName.GetLength() > 20) {
+		MessageBox(_T("The username is too long!"));
+		return;
+	}
+
+	if (m_sUserName[0] == ':' || m_sUserName[0] == '/') {
+		MessageBox(_T("You can not set the first character of username is ':' or '/'!"));
+		return;
+	}
+
 	if (AfxSocketInit() == FALSE)
 	{
 		AfxMessageBox(_T("Failed to Initialize Sockets"));
@@ -193,11 +208,6 @@ void CChatClientDlg::OnBnClickedButtonConnect()
 	
 	CStringA tmp(m_sUserName);
 	const char* msg = tmp;
-	if (strlen(msg) > 100) {
-		MessageBox(_T("Too long name!!!"));
-		return;
-	}
-
 	m_Client.Send(msg, strlen(msg));
 
 	GetDlgItem(IDC_BUTTON_STOP)->EnableWindow(TRUE);
@@ -209,6 +219,10 @@ void CChatClientDlg::OnBnClickedButtonConnect()
 void CChatClientDlg::OnBnClickedButtonStop()
 {
 	// TODO: Add your control notification handler code here
+	char msg[20] = "";
+	snprintf(msg, sizeof(msg), "/STOP");
+	m_Client.Send(msg, strlen(msg));
+
 	m_Client.ShutDown(2);
 	m_Client.Close();
 
@@ -236,7 +250,7 @@ void CChatClientDlg::OnBnClickedButtonSend()
 	}
 	else {
 		if (m_sMsg[0] != ':') {
-			MessageBox(_T("error syntax"));
+			MessageBox(_T("Error Syntax"));
 			return;
 		}
 		CStringA tmp(m_sMsg);
@@ -249,10 +263,23 @@ void CChatClientDlg::OnBnClickedButtonSend()
 	}
 }
 
-void CChatClientDlg::AddMsg(char* buff)
+void CChatClientDlg::AddMsg(char* buff, CClientSocket* m_client)
 {
 	if (!strcmp(buff, "/QUIT")) {
 		CChatClientDlg::OnBnClickedButtonStop();
+	}
+	else if (!strcmp(buff, "The username is unavailable")) {
+		CString mes(buff);
+		MessageBox(mes);
+		m_sUserName.Empty();
+		GetDlgItem(IDC_BUTTON_STOP)->EnableWindow(FALSE);
+		GetDlgItem(IDC_BUTTON_CONNECT)->EnableWindow(TRUE);
+		GetDlgItem(IDC_EDIT1)->EnableWindow(TRUE);
+		m_client->Close();
+	}
+	else if (!strcmp(buff, "Syntax Error!")) {
+		CString mes(buff);
+		MessageBox(mes);
 	}
 	else {
 		CString display(buff);
